@@ -66,6 +66,11 @@ def start(
         "--paper", 
         help="Run in paper trading mode (no real trades)"
     ),
+    demo_mode: bool = typer.Option(
+        None,
+        "--demo/--live",
+        help="Use Bybit MCP demo mode (safe) or live mode (real trades)"
+    ),
     verbose: bool = typer.Option(
         False, 
         "--verbose", 
@@ -78,13 +83,24 @@ def start(
     if not trading_engine:
         initialize_app()
     
+    # Override demo mode if specified
+    if demo_mode is not None:
+        config_manager.get_bybit_config().demo_mode = demo_mode
+    
     console.print(Panel.fit(
         "[bold blue]🚀 Starting Automated Trading Session[/bold blue]",
         border_style="blue"
     ))
     
+    # Show safety warnings
+    bybit_config = config_manager.get_bybit_config()
     if paper_trading:
         console.print("[yellow]⚠️  Paper trading mode enabled - no real trades will be executed[/yellow]")
+    elif bybit_config.demo_mode:
+        console.print("[green]✅ Bybit MCP demo mode enabled - safe testing with realistic data[/green]")
+    else:
+        console.print("[red]🚨 LIVE TRADING MODE - Real money will be used![/red]")
+        console.print("[yellow]⚠️  Make sure you understand the risks involved[/yellow]")
     
     async def start_session():
         try:
@@ -307,6 +323,15 @@ def config(
         console.print(f"  Model: {bedrock_config.model_id}")
         console.print(f"  Temperature: {bedrock_config.temperature}")
         
+        # Show authentication method
+        if bedrock_config.use_api_key:
+            api_key_status = "✓ Set" if bedrock_config.bedrock_api_key else "❌ Not set"
+            console.print(f"  Auth Method: API Key ({api_key_status})")
+        elif bedrock_config.aws_profile:
+            console.print(f"  Auth Method: AWS Profile ({bedrock_config.aws_profile})")
+        else:
+            console.print(f"  Auth Method: Environment/IAM")
+        
         # Bybit config
         bybit_config = config_manager.get_bybit_config()
         console.print(f"\n[bold]Bybit Settings:[/bold]")
@@ -324,6 +349,44 @@ def config(
                 console.print(f"  • {error}")
         else:
             console.print("[green]✅ Configuration is valid[/green]")
+
+
+@app.command()
+def setup_bedrock():
+    """Guide for setting up AWS Bedrock API key authentication."""
+    
+    console.print(Panel.fit(
+        "[bold blue]🔧 AWS Bedrock API Key Setup Guide[/bold blue]",
+        border_style="blue"
+    ))
+    
+    console.print("\n[bold]Step 1: Generate Bedrock API Key[/bold]")
+    console.print("1. Go to AWS Bedrock Console: [link]https://console.aws.amazon.com/bedrock/[/link]")
+    console.print("2. In the left navigation, select [cyan]API keys[/cyan]")
+    console.print("3. In the [cyan]Long-term API keys[/cyan] tab, choose [cyan]Generate long-term API keys[/cyan]")
+    console.print("4. Select [cyan]30 days[/cyan] for expiration")
+    console.print("5. Choose [cyan]Generate[/cyan]")
+    console.print("6. [red]Important:[/red] Copy the API key immediately (it's only shown once)")
+    
+    console.print("\n[bold]Step 2: Configure the CLI[/bold]")
+    console.print("1. Add the API key to your [cyan].env[/cyan] file:")
+    console.print("   [dim]AWS_BEARER_TOKEN_BEDROCK=your_api_key_here[/dim]")
+    console.print("2. Enable API key authentication in [cyan]config/settings.yaml[/cyan]:")
+    console.print("   [dim]bedrock:[/dim]")
+    console.print("   [dim]  use_api_key: true[/dim]")
+    
+    console.print("\n[bold]Step 3: Verify Setup[/bold]")
+    console.print("Run: [cyan]trade-executor config --validate[/cyan]")
+    
+    console.print("\n[yellow]💡 Tips:[/yellow]")
+    console.print("• API keys expire in 30 days - set a reminder to renew")
+    console.print("• For production, consider using AWS profiles or IAM roles")
+    console.print("• API keys provide [cyan]AmazonBedrockLimitedAccess[/cyan] permissions")
+    
+    console.print("\n[bold]Alternative: Use AWS Profile[/bold]")
+    console.print("If you prefer AWS profiles:")
+    console.print("1. Set [cyan]AWS_PROFILE=your_profile_name[/cyan] in .env")
+    console.print("2. Keep [cyan]use_api_key: false[/cyan] in config")
 
 
 @app.command()

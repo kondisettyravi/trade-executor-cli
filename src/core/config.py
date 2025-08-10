@@ -34,12 +34,17 @@ class BedrockConfig(BaseSettings):
     aws_secret_access_key: Optional[str] = None
     aws_session_token: Optional[str] = None
     aws_profile: Optional[str] = None
+    
+    # New Bedrock API key authentication (recommended for development)
+    bedrock_api_key: Optional[str] = Field(None, env="AWS_BEARER_TOKEN_BEDROCK")
+    use_api_key: bool = False  # Set to True to use API key instead of AWS credentials
 
 
 class BybitConfig(BaseSettings):
     """Bybit exchange configuration."""
     testnet: bool = False
     category: str = "spot"
+    demo_mode: bool = True  # Use Bybit MCP server's demo mode by default
     
     # API credentials (from environment)
     api_key: Optional[str] = Field(None, env="BYBIT_API_KEY")
@@ -169,10 +174,16 @@ class ConfigManager:
         if not self.config.bybit.api_secret:
             errors.append("BYBIT_API_SECRET environment variable is required")
         
-        # Check AWS credentials (either profile or keys)
+        # Check AWS/Bedrock credentials
         bedrock_config = self.config.bedrock
-        if not bedrock_config.aws_profile and not bedrock_config.aws_access_key_id:
-            errors.append("AWS credentials required: set AWS_PROFILE or AWS_ACCESS_KEY_ID")
+        if bedrock_config.use_api_key:
+            # Using Bedrock API key authentication
+            if not bedrock_config.bedrock_api_key:
+                errors.append("AWS_BEARER_TOKEN_BEDROCK environment variable is required when use_api_key is true")
+        else:
+            # Using traditional AWS credentials
+            if not bedrock_config.aws_profile and not bedrock_config.aws_access_key_id:
+                errors.append("AWS credentials required: set AWS_PROFILE or AWS_ACCESS_KEY_ID, or use Bedrock API key")
         
         # Validate trading parameters
         trading_config = self.config.trading

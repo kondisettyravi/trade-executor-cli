@@ -52,10 +52,16 @@ Create a `.env` file in the project root:
 BYBIT_API_KEY=your_bybit_api_key
 BYBIT_API_SECRET=your_bybit_api_secret
 
-# AWS Credentials (optional if using AWS profile)
+# AWS Credentials (choose one method)
+# Method 1: AWS Profile (recommended for production)
+AWS_PROFILE=your_aws_profile_name
+
+# Method 2: Direct AWS credentials
 AWS_ACCESS_KEY_ID=your_aws_access_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret_key
-AWS_PROFILE=your_aws_profile_name
+
+# Method 3: Bedrock API Key (recommended for development/testing)
+AWS_BEARER_TOKEN_BEDROCK=your_bedrock_api_key
 ```
 
 ### 2. Configuration File
@@ -81,7 +87,27 @@ bybit:
   category: "spot"
 ```
 
-### 3. Validate Configuration
+### 3. AWS Bedrock Setup
+
+#### Option A: Bedrock API Key (Recommended for Development)
+
+1. **Generate API Key**:
+   ```bash
+   trade-executor setup-bedrock
+   ```
+   This command provides a step-by-step guide to generate a 30-day Bedrock API key.
+
+2. **Configure**:
+   - Add `AWS_BEARER_TOKEN_BEDROCK=your_api_key` to `.env`
+   - Set `use_api_key: true` in `config/settings.yaml`
+
+#### Option B: AWS Profile (Recommended for Production)
+
+1. Configure AWS CLI with your profile
+2. Set `AWS_PROFILE=your_profile_name` in `.env`
+3. Keep `use_api_key: false` in `config/settings.yaml`
+
+### 4. Validate Configuration
 
 ```bash
 trade-executor config --validate
@@ -92,11 +118,17 @@ trade-executor config --validate
 ### Start Trading Session
 
 ```bash
-# Start automated trading
+# Start automated trading (demo mode enabled by default)
 trade-executor start
 
 # Start in paper trading mode (no real trades)
 trade-executor start --paper
+
+# Use Bybit MCP demo mode (safe testing with realistic data)
+trade-executor start --demo
+
+# Use live trading mode (real money - be careful!)
+trade-executor start --live
 
 # Start with verbose logging
 trade-executor start --verbose

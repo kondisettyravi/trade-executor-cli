@@ -26,11 +26,12 @@ class BybitClient:
                 server_name="bybit",
                 tool_name="get_wallet_balance",
                 arguments={
-                    "accountType": "UNIFIED" if self.category == "spot" else "CONTRACT"
+                    "accountType": "UNIFIED" if self.category == "spot" else "CONTRACT",
+                    "demo_mode": self.config.demo_mode
                 }
             )
             
-            logger.info("Retrieved account balance", response_keys=list(response.keys()))
+            logger.info("Retrieved account balance", response_keys=list(response.keys()), demo_mode=self.config.demo_mode)
             return response
             
         except Exception as e:

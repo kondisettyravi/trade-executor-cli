@@ -26,15 +26,42 @@ class BedrockClient:
         try:
             session_kwargs = {"region_name": self.config.region}
             
-            # Use profile if specified
-            if self.config.aws_profile:
+            # Check if using new Bedrock API key authentication
+            if self.config.use_api_key and self.config.bedrock_api_key:
+                # Set the API key as environment variable for boto3
+                import os
+                os.environ['AWS_BEARER_TOKEN_BEDROCK'] = self.config.bedrock_api_key
+                
+                # Create client with API key authentication
+                self.client = boto3.client("bedrock-runtime", **session_kwargs)
+                
+                logger.info(
+                    "Bedrock client initialized with API key authentication", 
+                    region=self.config.region,
+                    auth_method="api_key"
+                )
+                
+            elif self.config.aws_profile:
+                # Use AWS profile
                 session = boto3.Session(profile_name=self.config.aws_profile)
                 self.client = session.client("bedrock-runtime", **session_kwargs)
+                
+                logger.info(
+                    "Bedrock client initialized with AWS profile", 
+                    region=self.config.region,
+                    auth_method="profile",
+                    profile=self.config.aws_profile
+                )
+                
             else:
                 # Use environment variables or IAM role
                 self.client = boto3.client("bedrock-runtime", **session_kwargs)
-            
-            logger.info("Bedrock client initialized successfully", region=self.config.region)
+                
+                logger.info(
+                    "Bedrock client initialized with default credentials", 
+                    region=self.config.region,
+                    auth_method="default"
+                )
             
         except Exception as e:
             logger.error("Failed to initialize Bedrock client", error=str(e))
