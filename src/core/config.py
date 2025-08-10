@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class TradingConfig(BaseSettings):
@@ -23,17 +27,25 @@ class TradingConfig(BaseSettings):
 
 class BedrockConfig(BaseSettings):
     """AWS Bedrock configuration."""
-    region: str = "us-east-1"
-    model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-    fallback_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+    
+    # Bedrock configuration (can be overridden by environment variables)
+    region: str = Field(default_factory=lambda: os.getenv("BEDROCK_REGION", "us-east-1"))
+    model_id: str = Field(default_factory=lambda: os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-haiku-20241022-v1:0"))
+    fallback_model_id: str = Field(default_factory=lambda: os.getenv("BEDROCK_FALLBACK_MODEL_ID", "us.anthropic.claude-3-haiku-20241022-v1:0"))
     max_tokens: int = 4000
     temperature: float = 0.1
     
     # AWS credentials (from environment or AWS profile)
-    aws_access_key_id: Optional[str] = None
-    aws_secret_access_key: Optional[str] = None
-    aws_session_token: Optional[str] = None
-    aws_profile: Optional[str] = None
+    aws_access_key_id: Optional[str] = Field(None, env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: Optional[str] = Field(None, env="AWS_SECRET_ACCESS_KEY")
+    aws_session_token: Optional[str] = Field(None, env="AWS_SESSION_TOKEN")
+    aws_profile: Optional[str] = Field(None, env="AWS_PROFILE")
     
     # New Bedrock API key authentication (recommended for development)
     bedrock_api_key: Optional[str] = Field(None, env="AWS_BEARER_TOKEN_BEDROCK")
@@ -42,13 +54,21 @@ class BedrockConfig(BaseSettings):
 
 class BybitConfig(BaseSettings):
     """Bybit exchange configuration."""
-    testnet: bool = False
-    category: str = "spot"
-    demo_mode: bool = True  # Use Bybit MCP server's demo mode by default
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+    
+    # Trading configuration (can be overridden by environment variables)
+    testnet: bool = Field(default_factory=lambda: os.getenv("BYBIT_TESTNET", "false").lower() == "true")
+    category: str = Field(default_factory=lambda: os.getenv("BYBIT_CATEGORY", "spot"))
+    demo_mode: bool = Field(default_factory=lambda: os.getenv("BYBIT_DEMO_MODE", "true").lower() == "true")
     
     # API credentials (from environment)
-    api_key: Optional[str] = Field(None, env="BYBIT_API_KEY")
-    api_secret: Optional[str] = Field(None, env="BYBIT_API_SECRET")
+    api_key: Optional[str] = Field(default_factory=lambda: os.getenv("BYBIT_API_KEY"))
+    api_secret: Optional[str] = Field(default_factory=lambda: os.getenv("BYBIT_API_SECRET"))
 
 
 class NewsSource(BaseSettings):

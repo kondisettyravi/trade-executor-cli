@@ -13,7 +13,7 @@ trading:
   news_check_interval_minutes: 60
   
   # Trading pairs to consider
-  allowed_pairs: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "DOTUSDT"]
+  allowed_pairs: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "DOTUSDT", "DOGEUSDT", "AVAXUSDT"]
   
   # Session settings
   max_trades_per_day: 3
@@ -21,20 +21,17 @@ trading:
 
 # AWS Bedrock Configuration
 bedrock:
-  region: "us-east-1"
-  model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0"
-  fallback_model_id: "anthropic.claude-3-haiku-20240307-v1:0"
+  # region, model_id, and fallback_model_id can be overridden by environment variables
+  # BEDROCK_REGION, BEDROCK_MODEL_ID, BEDROCK_FALLBACK_MODEL_ID
   max_tokens: 4000
   temperature: 0.1
   # Authentication method (set use_api_key: true to use Bedrock API key)
   use_api_key: false  # Set to true for API key auth, false for AWS credentials
 
 # Bybit Configuration
-bybit:
-  testnet: false
-  category: "spot"  # spot, linear, inverse
-  demo_mode: true   # Use Bybit MCP server's demo mode for safe testing
-  
+# All Bybit settings are loaded from environment variables:
+# BYBIT_TESTNET, BYBIT_CATEGORY, BYBIT_DEMO_MODE, BYBIT_API_KEY, BYBIT_API_SECRET
+
 # News Sources Configuration
 news:
   sources:
