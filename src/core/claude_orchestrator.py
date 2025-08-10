@@ -187,15 +187,15 @@ class ClaudeOrchestrator:
             logger.error("❌ Error monitoring trade", error=str(e))
     
     async def _execute_claude_command(self, prompt: str, continue_mode: bool = False) -> Optional[str]:
-        """Execute the claude CLI command."""
+        """Execute the claude CLI command with dangerous skip permissions for uninterrupted operation."""
         try:
-            # Build command
+            # Build command with --dangerously-skip-permissions for uninterrupted execution
             if continue_mode:
-                cmd = ["claude", "-p", "-c", prompt]
+                cmd = ["claude", "--dangerously-skip-permissions", "-p", "-c", prompt]
             else:
-                cmd = ["claude", "-p", prompt]
+                cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt]
             
-            logger.info("🔧 Executing claude command", command=" ".join(cmd))
+            logger.info("🔧 Executing claude command (uninterrupted mode)", command=" ".join(cmd))
             
             # Set up environment variables for Claude
             env = {

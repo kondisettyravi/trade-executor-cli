@@ -110,7 +110,7 @@ claude-trader history --limit 10
 When no active trade exists, the orchestrator calls:
 
 ```bash
-claude -p "I would like to use the bybit mcp server and take a profitable trade on the major crypto currencies such as BTC, ETH, SOL, XRP and DOGE. I want the trade to be profitable and would want to monitor the trade and set the stop loss such that we don't get losses. Monitor the trade every 15 minutes. Be the boss. Take the right decision. You know that you are a very aggressive and profitable trader. Choose position size between 5-25% of available balance."
+claude --dangerously-skip-permissions -p "I would like to use the bybit mcp server and take a profitable trade on the major crypto currencies such as BTC, ETH, SOL, XRP and DOGE. I want the trade to be profitable and would want to monitor the trade and set the stop loss such that we don't get losses. Monitor the trade every 15 minutes. Be the boss. Take the right decision. You know that you are a very aggressive and profitable trader. Choose position size between 5-25% of available balance."
 ```
 
 ### 2. Trade Monitoring
@@ -118,8 +118,17 @@ claude -p "I would like to use the bybit mcp server and take a profitable trade 
 Every 15 minutes (or your configured interval), the orchestrator calls:
 
 ```bash
-claude -p -c "monitor the trade"
+claude --dangerously-skip-permissions -p -c "monitor the trade"
 ```
+
+## ⚠️ Uninterrupted Execution
+
+The orchestrator uses `--dangerously-skip-permissions` to enable uninterrupted Claude execution:
+
+- **Benefit**: Claude can complete complex trading workflows without permission interruptions
+- **Risk**: Claude has unrestricted command execution capabilities
+- **Safety**: Use in isolated environments with proper data backups
+- **Ideal for**: Automated trading where human intervention defeats the purpose
 
 ### 3. Trade Completion
 

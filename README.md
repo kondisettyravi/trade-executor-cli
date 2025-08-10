@@ -62,10 +62,19 @@ claude-trader history
 
 ## How It Works
 
-1. **Trade Initiation**: Calls `claude -p "trading prompt..."` with your configured style and coins
-2. **Monitoring**: Every 15 minutes calls `claude -p -c "monitor the trade"`
+1. **Trade Initiation**: Calls `claude --dangerously-skip-permissions -p "trading prompt..."` with your configured style and coins
+2. **Monitoring**: Every 15 minutes calls `claude --dangerously-skip-permissions -p -c "monitor the trade"`
 3. **Completion**: Detects when Claude closes the trade
 4. **New Cycle**: Automatically starts next trade
+
+## ⚠️ Safety Notice
+
+This orchestrator uses `--dangerously-skip-permissions` to let Claude work uninterrupted until completion. This is powerful but risky:
+
+- **Risk**: Claude can run arbitrary commands without permission prompts
+- **Benefit**: Uninterrupted trading execution and monitoring
+- **Recommendation**: Use in a secure, isolated environment (Docker container without internet access)
+- **Data Protection**: Ensure important data is backed up before use
 
 ## Environment Setup
 
