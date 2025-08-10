@@ -2,9 +2,11 @@ README.md
 setup.py
 src/__init__.py
 src/cli/__init__.py
+src/cli/claude_cli.py
 src/cli/dashboard.py
 src/cli/main.py
 src/core/__init__.py
+src/core/claude_orchestrator.py
 src/core/config.py
 src/core/session_manager.py
 src/core/trading_engine.py

@@ -1,22 +1,19 @@
-"""Setup script for the Trade Executor CLI."""
+"""Setup script for the Claude Trading Orchestrator."""
 
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
-
 setup(
-    name="trade-executor-cli",
+    name="claude-trading-orchestrator",
     version="1.0.0",
-    author="AI Trading Systems",
-    author_email="contact@aitradingsystems.com",
-    description="Automated cryptocurrency trading CLI powered by LLM",
+    author="Trading Systems",
+    author_email="contact@tradingsystems.com",
+    description="24/7 automated trading orchestrator using Claude CLI",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/aitradingsystems/trade-executor-cli",
+    url="https://github.com/tradingsystems/claude-trading-orchestrator",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -28,18 +25,22 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Topic :: Office/Business :: Financial :: Investment",
-        "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     python_requires=">=3.9",
-    install_requires=requirements,
+    install_requires=[
+        "typer>=0.9.0",
+        "rich>=13.7.0",
+        "PyYAML>=6.0.1",
+        "structlog>=23.2.0",
+    ],
     entry_points={
-        "console_scripts": [
-            "trade-executor=src.cli.main:cli_main",
+        'console_scripts': [
+            'claude-trader=src.cli.claude_cli:cli_main',
         ],
     },
     include_package_data=True,
     package_data={
-        "": ["*.yaml", "*.yml", "*.json", "*.txt"],
+        "": ["*.yaml", "*.yml"],
     },
     zip_safe=False,
 )

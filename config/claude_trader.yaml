@@ -1,0 +1,43 @@
+trading:
+  style: aggressive
+  coins:
+  - BTC
+  - ETH
+  - SOL
+  - XRP
+  - DOGE
+  position_size:
+    min: 5
+    max: 25
+  monitoring_interval: 15
+styles:
+  aggressive:
+    description: very aggressive and profitable trader who takes bold positions and
+      maximizes profits
+    risk_tolerance: high
+    position_preference: larger positions for maximum profit
+  moderate:
+    description: balanced trader who seeks good profits while managing risk appropriately
+    risk_tolerance: medium
+    position_preference: moderate positions balancing risk and reward
+  cautious:
+    description: careful trader who prioritizes capital preservation while seeking
+      steady profits
+    risk_tolerance: low
+    position_preference: smaller positions with tight risk management
+  conservative:
+    description: very conservative trader who focuses on capital protection with minimal
+      risk
+    risk_tolerance: very low
+    position_preference: small positions with strict stop losses
+advanced:
+  custom_prompt: ''
+  additional_instructions: ''
+  completion_keywords:
+  - trade completed
+  - position closed
+  - trade closed
+  - final profit
+  - final loss
+  - trade finished
+  - position exited
