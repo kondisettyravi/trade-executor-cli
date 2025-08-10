@@ -4,8 +4,8 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from pydantic import BaseSettings, Field
-from pydantic_settings import SettingsConfigDict
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class TradingConfig(BaseSettings):

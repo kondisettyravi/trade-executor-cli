@@ -1,3 +1,52 @@
+Metadata-Version: 2.4
+Name: trade-executor-cli
+Version: 1.0.0
+Summary: Automated cryptocurrency trading CLI powered by LLM
+Home-page: https://github.com/aitradingsystems/trade-executor-cli
+Author: AI Trading Systems
+Author-email: contact@aitradingsystems.com
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Office/Business :: Financial :: Investment
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: boto3>=1.34.0
+Requires-Dist: typer[all]>=0.9.0
+Requires-Dist: rich>=13.7.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: asyncio-mqtt>=0.16.0
+Requires-Dist: pandas>=2.1.0
+Requires-Dist: numpy<2.4.0,>=1.24.0
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: websockets>=12.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: PyYAML>=6.0.1
+Requires-Dist: python-dateutil>=2.8.2
+Requires-Dist: pytz>=2023.3
+Requires-Dist: structlog>=23.2.0
+Requires-Dist: colorlog>=6.8.0
+Requires-Dist: pytest>=7.4.0
+Requires-Dist: pytest-asyncio>=0.21.0
+Requires-Dist: pytest-mock>=3.12.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
 # Trade Executor CLI
 
 An intelligent, automated cryptocurrency trading system powered by AWS Bedrock LLM that executes and manages trades on Bybit exchange with sophisticated risk management and real-time monitoring.
