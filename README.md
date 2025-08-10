@@ -58,7 +58,30 @@ claude-trader status
 
 # View trade history
 claude-trader history
+
+# Start web dashboard for trade auditing
+claude-trader dashboard
 ```
+
+## 🌐 Web Dashboard
+
+The orchestrator includes a beautiful web dashboard for comprehensive trade auditing:
+
+- **Real-time Statistics**: Total trades, active trades, average duration
+- **Trade Timeline**: Detailed view of each trade's lifecycle
+- **Interactive UI**: Click on trades to see full timeline and Claude responses
+- **Auto-refresh**: Updates every 30 seconds automatically
+- **Trade Reasoning**: See why Claude made each trading decision
+
+### Dashboard Features:
+- 📊 **Trade Statistics**: Overview of trading performance
+- 📈 **Trade History**: All trades with status, duration, and cycles
+- 🔍 **Trade Timeline**: Detailed view of trade progression
+- 💬 **Claude Responses**: Full Claude reasoning for each decision
+- 🎯 **Completion Reasons**: Why trades were closed
+- 📱 **Responsive Design**: Works on desktop and mobile
+
+Access at: `http://localhost:5000` (or custom port)
 
 ## How It Works
 

@@ -3,3 +3,6 @@ typer>=0.9.0
 rich>=13.7.0
 PyYAML>=6.0.1
 structlog>=23.2.0
+
+# Web dashboard dependencies
+flask>=2.3.0

@@ -32,10 +32,13 @@ setup(
         "rich>=13.7.0",
         "PyYAML>=6.0.1",
         "structlog>=23.2.0",
+        "flask>=2.3.0",
+        "requests>=2.25.0",
     ],
     entry_points={
         'console_scripts': [
             'claude-trader=src.cli.claude_cli:cli_main',
+            'btc-check=btc_check:main',
         ],
     },
     include_package_data=True,

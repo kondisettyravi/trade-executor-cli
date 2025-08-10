@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import typer
+from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -45,12 +46,20 @@ def start(
         border_style="blue"
     ))
     
+    orchestrator = ClaudeOrchestrator()
+    
+    # Use interval from config if not specified via CLI
+    if interval == 15:  # Default value, check config
+        config_interval = orchestrator.config['trading']['monitoring_interval']
+        interval = config_interval
+        orchestrator.monitoring_interval = config_interval * 60
+    else:
+        # CLI override
+        orchestrator.monitoring_interval = interval * 60
+    
     console.print(f"[green]📊 Monitoring interval: {interval} minutes[/green]")
     console.print(f"[green]🤖 Using Claude CLI for all trading decisions[/green]")
     console.print(f"[yellow]Press Ctrl+C to stop[/yellow]\n")
-    
-    orchestrator = ClaudeOrchestrator()
-    orchestrator.monitoring_interval = interval * 60
     
     async def run_orchestrator():
         try:
@@ -310,6 +319,157 @@ def config(
         console.print("[dim]  claude-trader config --style aggressive[/dim]")
         console.print("[dim]  claude-trader config --coins BTC,ETH,SOL[/dim]")
         console.print("[dim]  claude-trader config --interval 10[/dim]")
+
+
+@app.command()
+def dashboard(
+    port: int = typer.Option(5000, "--port", "-p", help="Port to run dashboard on"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically")
+):
+    """Start the web dashboard for trade auditing."""
+    
+    try:
+        from ..web.dashboard import create_dashboard
+        
+        console.print(Panel.fit(
+            "[bold blue]🌐 Starting Trade Audit Dashboard[/bold blue]",
+            border_style="blue"
+        ))
+        
+        console.print(f"[green]📊 Dashboard will be available at: http://localhost:{port}[/green]")
+        console.print(f"[yellow]Press Ctrl+C to stop the dashboard[/yellow]\n")
+        
+        # Create and run dashboard
+        dashboard = create_dashboard(port=port)
+        
+        if open_browser:
+            import webbrowser
+            import threading
+            import time
+            
+            def open_browser_delayed():
+                time.sleep(2)  # Wait for server to start
+                webbrowser.open(f"http://localhost:{port}")
+            
+            threading.Thread(target=open_browser_delayed, daemon=True).start()
+        
+        dashboard.run(debug=False)
+        
+    except ImportError:
+        console.print("[red]❌ Web dashboard dependencies not available[/red]")
+        console.print("[yellow]Install with: pip install flask[/yellow]")
+    except Exception as e:
+        console.print(f"[red]❌ Failed to start dashboard: {e}[/red]")
+
+
+@app.command()
+def skip(
+    reason: str = typer.Option("Manual intervention", "--reason", "-r", help="Reason for skipping current trade")
+):
+    """Skip the current trade and move to the next one."""
+    
+    orchestrator = ClaudeOrchestrator()
+    
+    if not orchestrator.current_trade:
+        console.print("[yellow]⚠️ No active trade to skip[/yellow]")
+        return
+    
+    console.print(Panel.fit(
+        "[bold yellow]⏭️ Skipping Current Trade[/bold yellow]",
+        border_style="yellow"
+    ))
+    
+    # Show current trade info
+    trade = orchestrator.current_trade
+    console.print(f"[cyan]Current Trade:[/cyan]")
+    console.print(f"  Started: {trade['initiated_at']}")
+    console.print(f"  Status: {trade['status']}")
+    console.print(f"  Last Monitored: {trade.get('last_monitored', 'Never')}")
+    
+    # Confirm skip
+    confirm = typer.confirm(f"\nAre you sure you want to skip this trade? Reason: {reason}")
+    
+    if confirm:
+        # Force complete the current trade
+        final_response = f"Trade manually skipped by user. Reason: {reason}"
+        orchestrator._complete_current_trade(final_response)
+        
+        # Update the completion reason in the audit system
+        if orchestrator.auditor and orchestrator.current_trade_id:
+            completion_data = {
+                "completed_at": datetime.now(),
+                "final_response": final_response,
+                "completion_reason": f"Manual skip: {reason}"
+            }
+            orchestrator.auditor.log_trade_completion(orchestrator.current_trade_id, completion_data)
+        
+        console.print(f"[green]✅ Trade skipped successfully[/green]")
+        console.print(f"[green]📈 Ready for next trade cycle[/green]")
+        console.print(f"[dim]Reason: {reason}[/dim]")
+        
+        # Save state
+        orchestrator._save_state()
+        console.print(f"[dim]💾 State saved[/dim]")
+        
+    else:
+        console.print("[yellow]❌ Skip cancelled[/yellow]")
+
+
+@app.command()
+def force_next():
+    """Force start a new trade (even if one is active)."""
+    
+    orchestrator = ClaudeOrchestrator()
+    
+    console.print(Panel.fit(
+        "[bold red]🚨 Force New Trade[/bold red]",
+        border_style="red"
+    ))
+    
+    if orchestrator.current_trade:
+        console.print("[yellow]⚠️ There is currently an active trade:[/yellow]")
+        trade = orchestrator.current_trade
+        console.print(f"  Started: {trade['initiated_at']}")
+        console.print(f"  Status: {trade['status']}")
+        console.print(f"  Last Monitored: {trade.get('last_monitored', 'Never')}")
+        
+        # Confirm force
+        confirm = typer.confirm("\nThis will abandon the current trade and start a new one. Continue?")
+        
+        if not confirm:
+            console.print("[yellow]❌ Force new trade cancelled[/yellow]")
+            return
+        
+        # Force complete current trade
+        final_response = "Trade abandoned to force start new trade"
+        orchestrator._complete_current_trade(final_response)
+        
+        # Update audit system
+        if orchestrator.auditor and orchestrator.current_trade_id:
+            completion_data = {
+                "completed_at": datetime.now(),
+                "final_response": final_response,
+                "completion_reason": "Force abandoned for new trade"
+            }
+            orchestrator.auditor.log_trade_completion(orchestrator.current_trade_id, completion_data)
+        
+        console.print("[yellow]⚠️ Previous trade abandoned[/yellow]")
+    
+    # Force initiate new trade
+    console.print("[blue]🎯 Forcing new trade initiation...[/blue]")
+    
+    async def force_new_trade():
+        try:
+            await orchestrator._initiate_new_trade()
+            if orchestrator.current_trade:
+                console.print("[green]✅ New trade initiated successfully[/green]")
+                console.print(f"[green]📊 Trade ID: {orchestrator.current_trade_id}[/green]")
+            else:
+                console.print("[red]❌ Failed to initiate new trade[/red]")
+        except Exception as e:
+            console.print(f"[red]❌ Error forcing new trade: {e}[/red]")
+    
+    asyncio.run(force_new_trade())
 
 
 @app.callback()

@@ -9,13 +9,14 @@ trading:
   position_size:
     min: 5
     max: 25
-  monitoring_interval: 15
+  monitoring_interval: 1
 styles:
   aggressive:
-    description: very aggressive and profitable trader who takes bold positions and
-      maximizes profits
-    risk_tolerance: high
-    position_preference: larger positions for maximum profit
+    description: extremely aggressive and profitable trader targeting 20% daily returns using maximum leverage and bold positions
+    risk_tolerance: very high
+    position_preference: maximum leverage positions for 20% daily profit target
+    daily_target: "20% daily returns on total wallet value"
+    leverage_usage: "unlimited leverage as needed to achieve targets"
   moderate:
     description: balanced trader who seeks good profits while managing risk appropriately
     risk_tolerance: medium
@@ -41,3 +42,7 @@ advanced:
   - final loss
   - trade finished
   - position exited
+  - closing position
+  - prepare to close
+  - position closing
+  - executing close
