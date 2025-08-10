@@ -1,4 +1,5 @@
 .env
 src/__pycache__/*
 claude_trading_orchestrator.egg-info/*
-
+*__pycache__*
+*/*/__pycache__/*
