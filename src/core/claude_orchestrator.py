@@ -179,10 +179,11 @@ class ClaudeOrchestrator:
         
         # Build analytical, data-driven prompt with futures market specification and advanced MCP tools
         prompt = (
+            f"🎯 PRIMARY OBJECTIVE: ACHIEVE 20% DAILY RETURNS ON TOTAL WALLET VALUE 🎯\n\n"
             f"Please analyze the cryptocurrency FUTURES market using the bybit mcp server and execute a data-driven "
             f"FUTURES trade on {coins} based on comprehensive market analysis. "
             f"MARKET: Use Bybit FUTURES (linear perpetual contracts) for leverage trading. "
-            f"OBJECTIVE: Achieve 20% daily returns through systematic futures trading analysis. "
+            f"TARGET: 20% DAILY PROFIT - Use whatever leverage and position size needed to achieve this goal. "
             f"\n\nAdvanced Analysis Framework (Use ALL available MCP tools):"
             f"\n1. VOLUME PROFILE ANALYSIS: Use volume profile tool to identify Point of Control (POC) and Value Area for key support/resistance levels"
             f"\n2. MARKET CORRELATION: Analyze BTC-ETH correlation and volatility ratios to understand market relationships"
