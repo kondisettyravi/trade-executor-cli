@@ -170,8 +170,13 @@ class ClaudeOrchestrator:
         trading_config = self.config['trading']
         style_config = self.config['styles'][trading_config['style']]
         
-        # Build coin list
-        coins = ', '.join(trading_config['coins'])
+        # Build coin list - use trending coins if none specified
+        if trading_config['coins'] and trading_config['coins'] != ['AUTO']:
+            coins = ', '.join(trading_config['coins'])
+            coin_strategy = f"Focus on these specific coins: {coins}"
+        else:
+            coins = "trending cryptocurrencies"
+            coin_strategy = "DYNAMIC COIN SELECTION: Use the get_trending_coins MCP tool to identify the TOP TRENDING coins with highest volume, volatility, and momentum. Select the most profitable opportunities from the trending coins list."
         
         # Build position size range
         pos_min = trading_config['position_size']['min']
@@ -183,7 +188,9 @@ class ClaudeOrchestrator:
             f"Please analyze the cryptocurrency FUTURES market using the bybit mcp server and execute a data-driven "
             f"FUTURES trade on {coins} based on comprehensive market analysis. "
             f"MARKET: Use Bybit FUTURES (linear perpetual contracts) for leverage trading. "
-            f"TARGET: 20% DAILY PROFIT - Use whatever leverage and position size needed to achieve this goal. "
+            f"TARGET: 20% DAILY PROFIT using HIGH LEVERAGE (10x-100x) to amplify returns. "
+            f"LEVERAGE STRATEGY: Use significant leverage (minimum 10x, up to 100x) to achieve the 20% daily target. "
+            f"\n\nCOIN SELECTION STRATEGY: {coin_strategy}"
             f"\n\nAdvanced Analysis Framework (Use ALL available MCP tools):"
             f"\n1. VOLUME PROFILE ANALYSIS: Use volume profile tool to identify Point of Control (POC) and Value Area for key support/resistance levels"
             f"\n2. MARKET CORRELATION: Analyze BTC-ETH correlation and volatility ratios to understand market relationships"
@@ -275,13 +282,18 @@ class ClaudeOrchestrator:
         logger.info("👁️ Monitoring current trade with Claude")
         
         try:
-            # Simplified, fast monitoring prompt
+            # Enhanced monitoring prompt with position isolation and fee considerations
             monitoring_prompt = (
-                "Quick trade status check using Bybit MCP: "
-                "1) Current position P&L and price "
-                "2) Hold, close, or adjust decision "
-                "3) Brief reason (1-2 sentences) "
-                "If closing: execute immediately via MCP. Keep response concise."
+                f"Monitor ONLY the specific position you created in this session (Trade ID: {self.current_trade_id}). "
+                f"IGNORE any other positions on the account. "
+                f"Quick status check using Bybit MCP: "
+                f"1) Current P&L and price for YOUR position only (INCLUDE exchange fees) "
+                f"2) Decision: hold, close, or ADJUST TP/SL levels for YOUR position "
+                f"3) If profitable: TIGHTEN stop-loss to protect NET profits after fees, adjust TP higher "
+                f"4) If losing: consider reducing SL closer to break-even (account for fees) "
+                f"5) Fee consideration: Factor in trading fees (maker/taker) for all decisions "
+                f"6) Brief reason (1-2 sentences) "
+                f"Execute any adjustments or closures immediately via MCP for YOUR position only. Keep response concise."
             )
             
             # Monitor trade using claude
@@ -578,16 +590,18 @@ class ClaudeOrchestrator:
             )
     
     def _parse_trade_initiation(self, response: str) -> bool:
-        """Parse claude response to determine if trade was initiated."""
+        """Parse claude response to determine if trade was initiated with enhanced detection."""
         if not response:
             return False
             
-        # Look for indicators of successful trade initiation
+        response_lower = response.lower()
+        
+        # Enhanced indicators for successful trade initiation
         success_indicators = [
             "trade is now active",
             "position entry",
             "executed",
-            "entry price",
+            "entry price", 
             "stop loss",
             "take profit",
             "position size",
@@ -599,36 +613,103 @@ class ClaudeOrchestrator:
             "long position",
             "short position",
             "leverage",
-            "margin"
+            "margin",
+            "filled",
+            "opened",
+            "active",
+            "initiated",
+            "started",
+            "placed"
         ]
         
-        response_lower = response.lower()
+        # Strong execution confirmations (single indicator is enough)
+        strong_confirmations = [
+            "order executed",
+            "trade executed", 
+            "position opened successfully",
+            "order filled",
+            "successfully opened",
+            "execution confirmed",
+            "trade initiated successfully",
+            "position active"
+        ]
+        
+        # Check for strong confirmations first
+        for confirmation in strong_confirmations:
+            if confirmation in response_lower:
+                logger.info("📋 Trade initiation confirmed with strong indicator", 
+                           indicator=confirmation, success=True)
+                return True
+        
+        # Count regular indicators
         found_indicators = sum(1 for indicator in success_indicators 
                              if indicator in response_lower)
         
-        # Consider successful if we find at least 2 indicators (more lenient)
-        success = found_indicators >= 2
+        # More lenient success criteria
+        success = found_indicators >= 1  # Even 1 indicator can be enough
+        
+        # Special case: very short responses might still be successful
+        if len(response.strip()) < 50 and any(word in response_lower for word in ["ok", "done", "yes", "executed", "filled", "opened"]):
+            logger.info("📋 Trade initiation detected from brief response", 
+                       response=response.strip(), success=True)
+            return True
         
         logger.info("📋 Trade initiation analysis", 
                    indicators_found=found_indicators,
-                   success=success)
+                   response_length=len(response),
+                   success=success,
+                   response_preview=response[:100] + "..." if len(response) > 100 else response)
         
         return success
     
     def _is_trade_completed(self, response: str) -> bool:
-        """Check if the trade has been completed based on claude response."""
+        """Check if the trade has been completed based on claude response with strict execution verification."""
         if not response:
             return False
             
-        # Use configurable completion indicators
-        completion_indicators = self.config['advanced']['completion_keywords']
-        
         response_lower = response.lower()
         
-        for indicator in completion_indicators:
-            if indicator.lower() in response_lower:
-                logger.info("🏁 Trade completion detected", indicator=indicator)
+        # Extract the actual decision first
+        decision = "unknown"
+        if "hold" in response_lower or "holding" in response_lower:
+            decision = "hold"
+        elif "close" in response_lower or "closing" in response_lower:
+            decision = "close"
+        elif "exit" in response_lower or "exiting" in response_lower:
+            decision = "exit"
+        
+        # If decision is to hold, don't consider it completed
+        if decision == "hold":
+            logger.debug("🔄 Trade continues - decision is to hold", decision=decision)
+            return False
+        
+        # For close/exit decisions, require STRICT execution confirmation
+        if decision in ["close", "exit"]:
+            # Look for actual execution confirmations, not just intentions
+            execution_confirmations = [
+                "order executed",
+                "position closed successfully",
+                "trade executed",
+                "order filled",
+                "successfully closed",
+                "execution confirmed",
+                "order completed",
+                "position liquidated",
+                "trade closed successfully",
+                "exit executed"
+            ]
+            
+            # Check for actual execution confirmation
+            execution_confirmed = any(confirmation in response_lower for confirmation in execution_confirmations)
+            
+            if execution_confirmed:
+                logger.info("🏁 Trade completion confirmed with execution", decision=decision, execution_confirmed=True)
                 return True
+            else:
+                # Claude said close but no execution confirmation - continue monitoring
+                logger.warning("⚠️ Close decision detected but no execution confirmation - continuing to monitor", 
+                             decision=decision, execution_confirmed=False)
+                return False
         
         return False
     

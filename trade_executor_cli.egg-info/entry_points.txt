@@ -1,3 +1,0 @@
-[console_scripts]
-claude-trader = src.cli.claude_cli:cli_main
-trade-executor = src.cli.main:cli_main
