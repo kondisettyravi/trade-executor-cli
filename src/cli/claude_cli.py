@@ -37,25 +37,80 @@ def start(
         "--verbose", 
         "-v", 
         help="Enable verbose logging"
+    ),
+    session: str = typer.Option(
+        None,
+        "--session",
+        "-s",
+        help="Session name for independent trading (e.g., 'btc-session', 'eth-session')"
+    ),
+    coins: str = typer.Option(
+        None,
+        "--coins",
+        "-c",
+        help="Coins to trade in this session (comma-separated, e.g., 'BTC,ETH')"
+    ),
+    style: str = typer.Option(
+        None,
+        "--style",
+        help="Trading style for this session (aggressive, moderate, cautious, conservative)"
+    ),
+    port_offset: int = typer.Option(
+        0,
+        "--port-offset",
+        help="Port offset for web dashboard (dashboard will run on 5000 + offset)"
     )
 ):
     """Start 24/7 automated trading with Claude."""
     
-    console.print(Panel.fit(
-        "[bold blue]🚀 Starting 24/7 Claude Trading Orchestrator[/bold blue]",
-        border_style="blue"
-    ))
+    # Prepare session configuration
+    session_config = {}
+    if coins:
+        coin_list = [coin.strip().upper() for coin in coins.split(',')]
+        session_config['coins'] = coin_list
+    if style:
+        session_config['style'] = style
+    if interval != 15:
+        session_config['interval'] = interval
+    if port_offset:
+        session_config['port_offset'] = port_offset
     
-    orchestrator = ClaudeOrchestrator()
+    # Display session info
+    if session:
+        console.print(Panel.fit(
+            f"[bold blue]🚀 Starting Session: {session}[/bold blue]",
+            border_style="blue"
+        ))
+    else:
+        console.print(Panel.fit(
+            "[bold blue]🚀 Starting 24/7 Claude Trading Orchestrator[/bold blue]",
+            border_style="blue"
+        ))
+    
+    # Create orchestrator with session configuration
+    orchestrator = ClaudeOrchestrator(
+        session_name=session,
+        session_config=session_config if session_config else None
+    )
     
     # Use interval from config if not specified via CLI
-    if interval == 15:  # Default value, check config
+    if interval == 15 and not session_config.get('interval'):  # Default value, check config
         config_interval = orchestrator.config['trading']['monitoring_interval']
         interval = config_interval
         orchestrator.monitoring_interval = config_interval * 60
     else:
-        # CLI override
+        # CLI override or session override
         orchestrator.monitoring_interval = interval * 60
+    
+    # Display session details
+    if session:
+        console.print(f"[cyan]📋 Session Name:[/cyan] {session}")
+        if session_config.get('coins'):
+            console.print(f"[cyan]🪙 Session Coins:[/cyan] {', '.join(session_config['coins'])}")
+        if session_config.get('style'):
+            console.print(f"[cyan]🎯 Session Style:[/cyan] {session_config['style']}")
+        console.print(f"[cyan]💾 Session Database:[/cyan] data/trades_{session}.db")
+        console.print(f"[cyan]🌐 Session Dashboard:[/cyan] http://localhost:{5000 + hash(session) % 1000}")
     
     console.print(f"[green]📊 Monitoring interval: {interval} minutes[/green]")
     console.print(f"[green]🤖 Using Claude CLI for all trading decisions[/green]")

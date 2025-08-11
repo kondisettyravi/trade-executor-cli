@@ -26,25 +26,41 @@ except ImportError:
 class ClaudeOrchestrator:
     """24/7 trading orchestrator that uses the claude CLI command."""
     
-    def __init__(self, config_path: Optional[str] = None, enable_web_dashboard: bool = True):
+    def __init__(self, config_path: Optional[str] = None, enable_web_dashboard: bool = True, 
+                 session_name: Optional[str] = None, session_config: Optional[Dict[str, Any]] = None):
         self.is_running = False
         self.current_trade = None
         self.trade_history = []
         self.current_trade_id = None
-        self.state_file = "data/orchestrator_state.json"
+        self.session_name = session_name or "default"
+        self.state_file = f"data/orchestrator_state_{self.session_name}.json"
+        
+        # Cost tracking
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_cost = 0.0
+        self.interaction_count = 0
         
         # Load configuration
         self.config = self._load_config(config_path)
+        
+        # Apply session-specific overrides
+        if session_config:
+            self._apply_session_config(session_config)
+        
         self.monitoring_interval = self.config['trading']['monitoring_interval'] * 60  # Convert to seconds
         
-        # Initialize trade auditor and web dashboard
+        # Initialize trade auditor and web dashboard with session-specific database
         self.auditor = None
         self.dashboard = None
         if enable_web_dashboard and TradeAuditor:
             try:
-                self.auditor = TradeAuditor()
-                self.dashboard = create_dashboard()
-                logger.info("✅ Trade auditor and web dashboard initialized")
+                db_path = f"data/trades_{self.session_name}.db"
+                self.auditor = TradeAuditor(db_path)
+                dashboard_port = 5000 + hash(self.session_name) % 1000  # Unique port per session
+                self.dashboard = create_dashboard(db_path, dashboard_port)
+                logger.info("✅ Trade auditor and web dashboard initialized", 
+                          session=self.session_name, db_path=db_path, port=dashboard_port)
             except Exception as e:
                 logger.warning("⚠️ Failed to initialize web dashboard", error=str(e))
         
@@ -125,6 +141,25 @@ class ClaudeOrchestrator:
             }
         }
     
+    def _apply_session_config(self, session_config: Dict[str, Any]):
+        """Apply session-specific configuration overrides."""
+        if 'coins' in session_config:
+            self.config['trading']['coins'] = session_config['coins']
+            logger.info("📝 Session coins override applied", coins=session_config['coins'])
+        
+        if 'style' in session_config:
+            if session_config['style'] in self.config['styles']:
+                self.config['trading']['style'] = session_config['style']
+                logger.info("📝 Session style override applied", style=session_config['style'])
+        
+        if 'interval' in session_config:
+            self.config['trading']['monitoring_interval'] = session_config['interval']
+            logger.info("📝 Session interval override applied", interval=session_config['interval'])
+        
+        if 'port_offset' in session_config:
+            # This will be used by the dashboard initialization
+            pass
+    
     def _build_trading_prompt(self) -> str:
         """Build trading prompt based on configuration."""
         # Check for custom prompt first
@@ -142,17 +177,31 @@ class ClaudeOrchestrator:
         pos_min = trading_config['position_size']['min']
         pos_max = trading_config['position_size']['max']
         
-        # Build base prompt with aggressive 20% daily target
+        # Build analytical, data-driven prompt with futures market specification and advanced MCP tools
         prompt = (
-            f"I would like to use the bybit mcp server and take a profitable trade on the major crypto "
-            f"currencies such as {coins}. TARGET: 20% DAILY RETURNS on total wallet value. "
-            f"Use UNLIMITED LEVERAGE as needed to achieve this target. Be extremely aggressive and profitable. "
-            f"Monitor the trade every {trading_config['monitoring_interval']} minutes. Be the boss. Take the right decision. "
-            f"You know that you are a {style_config['description']}. "
-            f"Your risk tolerance is {style_config['risk_tolerance']} and you prefer {style_config['position_preference']}. "
-            f"GOAL: {style_config.get('daily_target', '20% daily returns')}. "
-            f"LEVERAGE: {style_config.get('leverage_usage', 'Use maximum leverage as needed')}. "
-            f"Position size: Use whatever size and leverage needed to achieve 20% daily profit target."
+            f"Please analyze the cryptocurrency FUTURES market using the bybit mcp server and execute a data-driven "
+            f"FUTURES trade on {coins} based on comprehensive market analysis. "
+            f"MARKET: Use Bybit FUTURES (linear perpetual contracts) for leverage trading. "
+            f"OBJECTIVE: Achieve 20% daily returns through systematic futures trading analysis. "
+            f"\n\nAdvanced Analysis Framework (Use ALL available MCP tools):"
+            f"\n1. VOLUME PROFILE ANALYSIS: Use volume profile tool to identify Point of Control (POC) and Value Area for key support/resistance levels"
+            f"\n2. MARKET CORRELATION: Analyze BTC-ETH correlation and volatility ratios to understand market relationships"
+            f"\n3. MULTI-TIMEFRAME MOMENTUM: Use momentum scanner across multiple timeframes for trend confirmation"
+            f"\n4. FUTURES MARKET DATA: Examine perpetual contract price action, funding rates, open interest"
+            f"\n5. TECHNICAL INDICATORS: Analyze RSI, MACD, moving averages, support/resistance levels"
+            f"\n6. ON-CHAIN METRICS: If available, analyze network health and whale activity for fundamental insights"
+            f"\n7. RISK ASSESSMENT: Evaluate market conditions, liquidity, and leverage risks using correlation data"
+            f"\n8. POSITION SIZING: Calculate optimal position size with leverage based on volatility analysis"
+            f"\n9. ENTRY/EXIT STRATEGY: Use POC and Value Area levels for precise entry points, stop-loss, and take-profit"
+            f"\n\nFutures Trading Parameters:"
+            f"\n- Market Type: Linear Perpetual Futures (USDT margin)"
+            f"\n- Risk Profile: {style_config['risk_tolerance']} risk tolerance"
+            f"\n- Position Preference: {style_config['position_preference']}"
+            f"\n- Monitoring Frequency: Every {trading_config['monitoring_interval']} minutes"
+            f"\n- Leverage: Use appropriate leverage based on volatility analysis and correlation data"
+            f"\n\nDecision Criteria: Base all futures trading decisions on comprehensive analysis using volume profile, "
+            f"correlation analysis, momentum scanning, and traditional technical indicators. Use POC levels for entries, "
+            f"Value Area boundaries for risk management, and correlation data for position sizing."
         )
         
         # Add additional instructions if any
@@ -175,13 +224,25 @@ class ClaudeOrchestrator:
             result = await self._execute_claude_command(prompt)
             
             if result and self._parse_trade_initiation(result):
-                logger.info("✅ New trade initiated successfully")
+                # Extract detailed trade information from Claude's response
+                trade_details = self._extract_trade_initiation_details(result)
+                
+                logger.info("✅ New trade initiated successfully",
+                          coin=trade_details["coin"],
+                          side=trade_details["side"],
+                          entry_price=trade_details["entry_price"],
+                          position_size=trade_details["position_size"],
+                          leverage=trade_details["leverage"],
+                          stop_loss=trade_details["stop_loss"],
+                          take_profit=trade_details["take_profit"])
+                
                 initiated_at = datetime.now()
                 self.current_trade = {
                     "initiated_at": initiated_at,
                     "last_monitored": initiated_at,
                     "status": "active",
-                    "claude_response": result
+                    "claude_response": result,
+                    "trade_details": trade_details
                 }
                 
                 # Log to auditor
@@ -191,10 +252,14 @@ class ClaudeOrchestrator:
                         "coins": self.config['trading']['coins'],
                         "initiated_at": initiated_at,
                         "prompt": prompt,
-                        "claude_response": result
+                        "claude_response": result,
+                        "trade_details": trade_details
                     }
                     self.current_trade_id = self.auditor.log_trade_initiation(trade_data)
-                    logger.info("📊 Trade logged to audit system", trade_id=self.current_trade_id)
+                    logger.info("📊 Trade logged to audit system", 
+                              trade_id=self.current_trade_id,
+                              coin=trade_details["coin"],
+                              entry_price=trade_details["entry_price"])
             else:
                 logger.warning("⚠️ Failed to initiate trade, will retry in next cycle")
                 
@@ -209,19 +274,13 @@ class ClaudeOrchestrator:
         logger.info("👁️ Monitoring current trade with Claude")
         
         try:
-            # Enhanced monitoring prompt with 20% daily target emphasis and clear execution instructions
+            # Simplified, fast monitoring prompt
             monitoring_prompt = (
-                "Monitor the current trade and provide a detailed update. REMEMBER: TARGET is 20% DAILY RETURNS on total wallet value. "
-                "Use unlimited leverage as needed. IMPORTANT: If you decide to close the position, USE THE BYBIT MCP to actually execute the close order - don't just say 'preparing to close'. "
-                "Please include: "
-                "1) Current position status (which coin, profit/loss, leverage used) "
-                "2) Progress toward 20% daily target - are we on track? "
-                "3) Your decision (hold, close, adjust leverage, add positions) and why "
-                "4) If closing: EXECUTE the close order using Bybit MCP and confirm closure "
-                "5) Market analysis that influenced your decision "
-                "6) Next steps to achieve 20% daily profit target. "
-                "Be extremely aggressive and profit-focused. Use maximum leverage if needed to hit the 20% daily target. "
-                "EXECUTE ACTIONS, don't just prepare or plan - use the MCP tools to actually trade."
+                "Quick trade status check using Bybit MCP: "
+                "1) Current position P&L and price "
+                "2) Hold, close, or adjust decision "
+                "3) Brief reason (1-2 sentences) "
+                "If closing: execute immediately via MCP. Keep response concise."
             )
             
             # Monitor trade using claude
@@ -266,7 +325,141 @@ class ClaudeOrchestrator:
         except Exception as e:
             logger.error("❌ Error monitoring trade", error=str(e))
     
-    async def _execute_claude_command(self, prompt: str, continue_mode: bool = False) -> Optional[str]:
+    def _calculate_token_cost(self, input_tokens: int, output_tokens: int, model: str = "claude-3.5-sonnet") -> float:
+        """Calculate the cost of Claude API usage based on token counts."""
+        # Claude 3.5 Sonnet pricing (as of 2024)
+        pricing = {
+            "claude-3.5-sonnet": {
+                "input": 0.003,   # $0.003 per 1K input tokens
+                "output": 0.015   # $0.015 per 1K output tokens
+            },
+            "claude-3-haiku": {
+                "input": 0.00025, # $0.00025 per 1K input tokens
+                "output": 0.00125 # $0.00125 per 1K output tokens
+            },
+            "claude-3-opus": {
+                "input": 0.015,   # $0.015 per 1K input tokens
+                "output": 0.075   # $0.075 per 1K output tokens
+            }
+        }
+        
+        # Default to Sonnet pricing if model not found
+        rates = pricing.get(model, pricing["claude-3.5-sonnet"])
+        
+        input_cost = (input_tokens / 1000) * rates["input"]
+        output_cost = (output_tokens / 1000) * rates["output"]
+        
+        return input_cost + output_cost
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for text (rough approximation)."""
+        # Rough estimation: ~4 characters per token for English text
+        return len(text) // 4
+    
+    def _analyze_claude_error(self, stderr: str, stdout: str, return_code: int) -> Dict[str, str]:
+        """Analyze Claude command errors and provide detailed diagnostics."""
+        error_type = "Unknown Error"
+        description = "An unknown error occurred"
+        suggested_fix = "Check Claude CLI installation and configuration"
+        
+        # Combine stderr and stdout for analysis
+        full_error = f"{stderr} {stdout}".lower()
+        
+        # Authentication/API Key errors
+        if any(keyword in full_error for keyword in ["authentication", "api key", "unauthorized", "invalid key", "forbidden"]):
+            error_type = "Authentication Error"
+            description = "Claude CLI authentication failed - invalid or missing API key"
+            suggested_fix = "Check ANTHROPIC_API_KEY environment variable or AWS Bedrock credentials"
+        
+        # AWS/Bedrock specific errors
+        elif any(keyword in full_error for keyword in ["bedrock", "aws", "credentials", "access denied", "region"]):
+            error_type = "AWS Bedrock Error"
+            description = "AWS Bedrock access failed - credentials or region issue"
+            suggested_fix = "Verify AWS_PROFILE, AWS_REGION, and Bedrock permissions"
+        
+        # Network/Connection errors
+        elif any(keyword in full_error for keyword in ["network", "connection", "timeout", "unreachable", "dns"]):
+            error_type = "Network Error"
+            description = "Network connectivity issue - cannot reach Claude API"
+            suggested_fix = "Check internet connection and firewall settings"
+        
+        # Rate limiting errors
+        elif any(keyword in full_error for keyword in ["rate limit", "too many requests", "quota", "throttle"]):
+            error_type = "Rate Limit Error"
+            description = "API rate limit exceeded - too many requests"
+            suggested_fix = "Reduce monitoring frequency or wait before retrying"
+        
+        # Model/Service errors
+        elif any(keyword in full_error for keyword in ["model", "service unavailable", "internal error", "server error"]):
+            error_type = "Service Error"
+            description = "Claude service or model unavailable"
+            suggested_fix = "Wait and retry - service may be temporarily unavailable"
+        
+        # Command not found
+        elif any(keyword in full_error for keyword in ["command not found", "no such file", "not found"]):
+            error_type = "Command Not Found"
+            description = "Claude CLI command not found in PATH"
+            suggested_fix = "Install Claude CLI or add it to your PATH environment variable"
+        
+        # Permission errors
+        elif any(keyword in full_error for keyword in ["permission denied", "access denied", "not permitted"]):
+            error_type = "Permission Error"
+            description = "Permission denied - insufficient access rights"
+            suggested_fix = "Check file permissions and user access rights"
+        
+        # MCP Server errors
+        elif any(keyword in full_error for keyword in ["mcp", "server", "bybit", "connection refused"]):
+            error_type = "MCP Server Error"
+            description = "MCP server (Bybit) connection failed"
+            suggested_fix = "Ensure Bybit MCP server is running and accessible"
+        
+        # Timeout errors
+        elif any(keyword in full_error for keyword in ["timeout", "timed out", "deadline exceeded"]):
+            error_type = "Timeout Error"
+            description = "Command execution timed out"
+            suggested_fix = "Increase timeout or simplify the prompt"
+        
+        # Input/Prompt errors
+        elif any(keyword in full_error for keyword in ["invalid input", "prompt", "malformed"]):
+            error_type = "Input Error"
+            description = "Invalid prompt or input format"
+            suggested_fix = "Check prompt formatting and special characters"
+        
+        # Context length errors
+        elif any(keyword in full_error for keyword in ["input is too long", "context length", "token limit", "too many tokens"]):
+            error_type = "Context Length Error"
+            description = "Input prompt exceeds model's context length limit"
+            suggested_fix = "Shorten the prompt or use continue mode to reduce context"
+        
+        # Return code specific analysis
+        if return_code == 1:
+            if error_type == "Unknown Error":
+                error_type = "General Error"
+                description = "Command failed with exit code 1 - general error"
+        elif return_code == 2:
+            error_type = "Usage Error"
+            description = "Command usage error - incorrect arguments or options"
+            suggested_fix = "Check Claude CLI command syntax and arguments"
+        elif return_code == 126:
+            error_type = "Permission Error"
+            description = "Command found but not executable"
+            suggested_fix = "Check execute permissions on Claude CLI binary"
+        elif return_code == 127:
+            error_type = "Command Not Found"
+            description = "Claude CLI command not found"
+            suggested_fix = "Install Claude CLI or add to PATH"
+        elif return_code == 130:
+            error_type = "Interrupted"
+            description = "Command was interrupted (Ctrl+C)"
+            suggested_fix = "Command was manually interrupted"
+        
+        return {
+            "type": error_type,
+            "description": description,
+            "suggested_fix": suggested_fix
+        }
+    
+    async def _execute_claude_command(self, prompt: str, continue_mode: bool = False, retry_count: int = 0) -> Optional[str]:
         """Execute the claude CLI command with dangerous skip permissions for uninterrupted operation."""
         try:
             # Build command with --dangerously-skip-permissions for uninterrupted execution
@@ -275,7 +468,13 @@ class ClaudeOrchestrator:
             else:
                 cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt]
             
-            logger.info("🔧 Executing claude command (uninterrupted mode)", command=" ".join(cmd))
+            # Estimate input tokens
+            input_tokens = self._estimate_tokens(prompt)
+            
+            logger.info("🔧 Executing claude command (uninterrupted mode)", 
+                       command=" ".join(cmd),
+                       estimated_input_tokens=input_tokens,
+                       retry_attempt=retry_count)
             
             # Set up environment variables for Claude
             env = {
@@ -299,19 +498,83 @@ class ClaudeOrchestrator:
             
             if process.returncode == 0:
                 result = stdout.decode('utf-8').strip()
+                
+                # Estimate output tokens and calculate cost
+                output_tokens = self._estimate_tokens(result)
+                interaction_cost = self._calculate_token_cost(input_tokens, output_tokens)
+                
+                # Update cost tracking
+                self.total_input_tokens += input_tokens
+                self.total_output_tokens += output_tokens
+                self.total_cost += interaction_cost
+                self.interaction_count += 1
+                
+                # Calculate average cost per interaction
+                avg_cost_per_interaction = self.total_cost / self.interaction_count if self.interaction_count > 0 else 0
+                
                 logger.info("✅ Claude command executed successfully", 
-                          response_length=len(result))
+                          response_length=len(result),
+                          input_tokens=input_tokens,
+                          output_tokens=output_tokens,
+                          interaction_cost=f"${interaction_cost:.4f}",
+                          total_cost=f"${self.total_cost:.4f}",
+                          avg_cost_per_interaction=f"${avg_cost_per_interaction:.4f}",
+                          total_interactions=self.interaction_count)
+                
                 return result
             else:
-                error_msg = stderr.decode('utf-8').strip()
-                logger.error("❌ Claude command failed", 
-                           return_code=process.returncode, 
-                           error=error_msg)
+                # Comprehensive error logging
+                stdout_msg = stdout.decode('utf-8').strip() if stdout else "No stdout"
+                stderr_msg = stderr.decode('utf-8').strip() if stderr else "No stderr"
+                
+                # Analyze common error patterns
+                error_analysis = self._analyze_claude_error(stderr_msg, stdout_msg, process.returncode)
+                
+                # Handle context length errors with automatic retry
+                if error_analysis["type"] == "Context Length Error" and retry_count < 2:
+                    logger.warning("🔄 Context length exceeded - attempting retry with shorter prompt", 
+                                 retry_attempt=retry_count + 1)
+                    
+                    # Shorten the prompt and retry
+                    shortened_prompt = self._shorten_prompt(prompt, continue_mode)
+                    if shortened_prompt != prompt:
+                        logger.info("✂️ Prompt shortened for retry", 
+                                  original_length=len(prompt),
+                                  shortened_length=len(shortened_prompt))
+                        return await self._execute_claude_command(shortened_prompt, continue_mode, retry_count + 1)
+                
+                logger.error("❌ Claude command failed - DETAILED ERROR ANALYSIS", 
+                           return_code=process.returncode,
+                           stderr=stderr_msg,
+                           stdout=stdout_msg,
+                           error_type=error_analysis["type"],
+                           error_description=error_analysis["description"],
+                           suggested_fix=error_analysis["suggested_fix"],
+                           command_executed=" ".join(cmd),
+                           working_directory="/Users/rkondis/personalwork/trade-executor-cli",
+                           retry_attempt=retry_count)
+                
                 return None
                 
         except Exception as e:
             logger.error("❌ Error executing claude command", error=str(e))
             return None
+    
+    def _shorten_prompt(self, prompt: str, continue_mode: bool) -> str:
+        """Shorten prompt to fit within context limits."""
+        if continue_mode:
+            # For monitoring, use ultra-short prompt
+            return "Quick status: P&L, decision (hold/close), reason (1 sentence). Execute if closing."
+        else:
+            # For trade initiation, use condensed version
+            trading_config = self.config['trading']
+            coins = ', '.join(trading_config['coins'])
+            
+            return (
+                f"Use Bybit MCP to execute profitable FUTURES trade on {coins}. "
+                f"Target: 20% daily returns. Use linear perpetual contracts with leverage. "
+                f"Analyze market, choose best coin, set leverage and position size. Execute with stop-loss and take-profit."
+            )
     
     def _parse_trade_initiation(self, response: str) -> bool:
         """Parse claude response to determine if trade was initiated."""
@@ -326,15 +589,24 @@ class ClaudeOrchestrator:
             "entry price",
             "stop loss",
             "take profit",
-            "position size"
+            "position size",
+            "order placed",
+            "trade opened",
+            "position opened",
+            "buy order",
+            "sell order",
+            "long position",
+            "short position",
+            "leverage",
+            "margin"
         ]
         
         response_lower = response.lower()
         found_indicators = sum(1 for indicator in success_indicators 
                              if indicator in response_lower)
         
-        # Consider successful if we find multiple indicators
-        success = found_indicators >= 3
+        # Consider successful if we find at least 2 indicators (more lenient)
+        success = found_indicators >= 2
         
         logger.info("📋 Trade initiation analysis", 
                    indicators_found=found_indicators,
@@ -470,6 +742,134 @@ class ClaudeOrchestrator:
             "reasoning": reasoning,
             "next_action": next_action,
             "summary": summary
+        }
+    
+    def _extract_trade_initiation_details(self, response: str) -> Dict[str, str]:
+        """Extract detailed trade information from Claude's trade initiation response."""
+        if not response:
+            return {
+                "coin": "Unknown",
+                "side": "Unknown", 
+                "entry_price": "Unknown",
+                "position_size": "Unknown",
+                "leverage": "Unknown",
+                "stop_loss": "Unknown",
+                "take_profit": "Unknown"
+            }
+        
+        response_lower = response.lower()
+        
+        # Extract coin/symbol
+        coin = "Unknown"
+        coins = ["btc", "bitcoin", "eth", "ethereum", "sol", "solana", "xrp", "ripple", "doge", "dogecoin", "pepe", "link", "chainlink"]
+        for c in coins:
+            if c in response_lower:
+                if c in ["btc", "bitcoin"]:
+                    coin = "BTC"
+                elif c in ["eth", "ethereum"]:
+                    coin = "ETH"
+                elif c in ["sol", "solana"]:
+                    coin = "SOL"
+                elif c in ["xrp", "ripple"]:
+                    coin = "XRP"
+                elif c in ["doge", "dogecoin"]:
+                    coin = "DOGE"
+                elif c == "pepe":
+                    coin = "PEPE"
+                elif c in ["link", "chainlink"]:
+                    coin = "LINK"
+                break
+        
+        # Extract side (buy/sell, long/short)
+        side = "Unknown"
+        if "buy" in response_lower or "long" in response_lower:
+            side = "Long"
+        elif "sell" in response_lower or "short" in response_lower:
+            side = "Short"
+        
+        # Extract entry price using regex
+        entry_price = "Unknown"
+        price_patterns = [
+            r'\$([0-9,]+\.?[0-9]*)',  # $50,000 or $50000.50
+            r'([0-9,]+\.?[0-9]*)\s*(?:usd|usdt)',  # 50000 USD/USDT
+            r'entry.*?([0-9,]+\.?[0-9]*)',  # entry price 50000
+            r'price.*?([0-9,]+\.?[0-9]*)',  # price 50000
+        ]
+        
+        for pattern in price_patterns:
+            matches = re.findall(pattern, response_lower)
+            if matches:
+                entry_price = f"${matches[0].replace(',', '')}"
+                break
+        
+        # Extract position size
+        position_size = "Unknown"
+        size_patterns = [
+            r'([0-9]+\.?[0-9]*)\s*%',  # 10% or 10.5%
+            r'([0-9]+\.?[0-9]*)\s*(?:btc|eth|sol|xrp|doge|pepe|link)',  # 0.1 BTC
+            r'size.*?([0-9]+\.?[0-9]*)',  # size 0.1
+            r'quantity.*?([0-9]+\.?[0-9]*)',  # quantity 0.1
+        ]
+        
+        for pattern in size_patterns:
+            matches = re.findall(pattern, response_lower)
+            if matches:
+                if '%' in response_lower:
+                    position_size = f"{matches[0]}%"
+                else:
+                    position_size = f"{matches[0]} {coin}"
+                break
+        
+        # Extract leverage
+        leverage = "Unknown"
+        leverage_patterns = [
+            r'([0-9]+)x\s*leverage',  # 10x leverage
+            r'leverage.*?([0-9]+)',  # leverage 10
+            r'([0-9]+)x',  # 10x
+        ]
+        
+        for pattern in leverage_patterns:
+            matches = re.findall(pattern, response_lower)
+            if matches:
+                leverage = f"{matches[0]}x"
+                break
+        
+        # Extract stop loss
+        stop_loss = "Unknown"
+        sl_patterns = [
+            r'stop.*?loss.*?\$([0-9,]+\.?[0-9]*)',  # stop loss $45000
+            r'sl.*?\$([0-9,]+\.?[0-9]*)',  # SL $45000
+            r'stop.*?([0-9,]+\.?[0-9]*)',  # stop 45000
+        ]
+        
+        for pattern in sl_patterns:
+            matches = re.findall(pattern, response_lower)
+            if matches:
+                stop_loss = f"${matches[0].replace(',', '')}"
+                break
+        
+        # Extract take profit
+        take_profit = "Unknown"
+        tp_patterns = [
+            r'take.*?profit.*?\$([0-9,]+\.?[0-9]*)',  # take profit $55000
+            r'tp.*?\$([0-9,]+\.?[0-9]*)',  # TP $55000
+            r'target.*?\$([0-9,]+\.?[0-9]*)',  # target $55000
+        ]
+        
+        for pattern in tp_patterns:
+            matches = re.findall(pattern, response_lower)
+            if matches:
+                take_profit = f"${matches[0].replace(',', '')}"
+                break
+        
+        return {
+            "coin": coin,
+            "side": side,
+            "entry_price": entry_price,
+            "position_size": position_size,
+            "leverage": leverage,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit
         }
     
     def _extract_completion_reason(self, response: str) -> str:
