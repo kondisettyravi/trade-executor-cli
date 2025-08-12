@@ -182,7 +182,7 @@ class ClaudeOrchestrator:
         pos_min = trading_config['position_size']['min']
         pos_max = trading_config['position_size']['max']
         
-        # Build analytical, data-driven prompt with futures market specification and advanced MCP tools
+        # Build analytical, data-driven prompt with futures market specification and balanced long/short strategy
         prompt = (
             f"🎯 PRIMARY OBJECTIVE: ACHIEVE 20% DAILY RETURNS ON TOTAL WALLET VALUE 🎯\n\n"
             f"Please analyze the cryptocurrency FUTURES market using the bybit mcp server and execute a data-driven "
@@ -191,6 +191,12 @@ class ClaudeOrchestrator:
             f"TARGET: 20% DAILY PROFIT using HIGH LEVERAGE (10x-100x) to amplify returns. "
             f"LEVERAGE STRATEGY: Use significant leverage (minimum 10x, up to 100x) to achieve the 20% daily target. "
             f"\n\nCOIN SELECTION STRATEGY: {coin_strategy}"
+            f"\n\n🎯 DIRECTIONAL STRATEGY: Consider BOTH LONG AND SHORT positions based on market analysis:"
+            f"\n- LONG POSITIONS: When trend is bullish, price above key support, momentum positive"
+            f"\n- SHORT POSITIONS: When trend is bearish, price below key resistance, momentum negative"
+            f"\n- MARKET DIRECTION: Analyze if current conditions favor LONG or SHORT positions"
+            f"\n- BALANCED APPROACH: Use both long and short strategies to maximize 20% daily returns"
+            f"\n- TREND ANALYSIS: Uptrend = long bias, downtrend = short bias, sideways = breakout direction"
             f"\n\nAdvanced Analysis Framework (Use ALL available MCP tools):"
             f"\n1. VOLUME PROFILE ANALYSIS: Use volume profile tool to identify Point of Control (POC) and Value Area for key support/resistance levels"
             f"\n2. MARKET CORRELATION: Analyze BTC-ETH correlation and volatility ratios to understand market relationships"
@@ -201,6 +207,13 @@ class ClaudeOrchestrator:
             f"\n7. RISK ASSESSMENT: Evaluate market conditions, liquidity, and leverage risks using correlation data"
             f"\n8. POSITION SIZING: Calculate optimal position size with leverage based on volatility analysis"
             f"\n9. ENTRY/EXIT STRATEGY: Use POC and Value Area levels for precise entry points, stop-loss, and take-profit"
+            f"\n10. DIRECTIONAL BIAS: Determine LONG vs SHORT based on:"
+            f"\n    - RSI >70 + resistance rejection = SHORT opportunity"
+            f"\n    - RSI <30 + support bounce = LONG opportunity"
+            f"\n    - Price below key moving averages = SHORT bias"
+            f"\n    - Price above key moving averages = LONG bias"
+            f"\n    - Bearish MACD crossover = SHORT signal"
+            f"\n    - Bullish MACD crossover = LONG signal"
             f"\n\nFutures Trading Parameters:"
             f"\n- Market Type: Linear Perpetual Futures (USDT margin)"
             f"\n- Risk Profile: {style_config['risk_tolerance']} risk tolerance"
@@ -282,7 +295,7 @@ class ClaudeOrchestrator:
         logger.info("👁️ Monitoring current trade with Claude")
         
         try:
-            # Enhanced monitoring prompt with position isolation and fee considerations
+            # Enhanced monitoring prompt with mandatory order confirmation
             monitoring_prompt = (
                 f"Monitor ONLY the specific position you created in this session (Trade ID: {self.current_trade_id}). "
                 f"IGNORE any other positions on the account. "
@@ -293,7 +306,8 @@ class ClaudeOrchestrator:
                 f"4) If losing: consider reducing SL closer to break-even (account for fees) "
                 f"5) Fee consideration: Factor in trading fees (maker/taker) for all decisions "
                 f"6) Brief reason (1-2 sentences) "
-                f"Execute any adjustments or closures immediately via MCP for YOUR position only. Keep response concise."
+                f"CRITICAL: If you execute ANY order (close, adjust TP/SL), you MUST provide the ORDER ID and confirm execution status. "
+                f"Say 'ORDER EXECUTED: [order_id]' or 'ORDER FAILED: [reason]' for any trade action. Keep response concise."
             )
             
             # Monitor trade using claude
@@ -683,32 +697,76 @@ class ClaudeOrchestrator:
             logger.debug("🔄 Trade continues - decision is to hold", decision=decision)
             return False
         
-        # For close/exit decisions, require STRICT execution confirmation
+        # For close/exit decisions, require STRICT execution confirmation with order ID
         if decision in ["close", "exit"]:
-            # Look for actual execution confirmations, not just intentions
+            # Look for actual execution confirmations with order IDs
             execution_confirmations = [
-                "order executed",
-                "position closed successfully",
-                "trade executed",
-                "order filled",
+                "order executed:",
+                "order filled:",
                 "successfully closed",
                 "execution confirmed",
-                "order completed",
+                "order completed:",
                 "position liquidated",
                 "trade closed successfully",
                 "exit executed"
             ]
             
-            # Check for actual execution confirmation
+            # Look for VALID order ID patterns (must be realistic Bybit order IDs)
+            order_id_patterns = [
+                r"order executed:\s*([0-9]{10,20})",  # Bybit order IDs are long numbers
+                r"order filled:\s*([0-9]{10,20})",
+                r"order id:\s*([0-9]{10,20})",
+                r"order:\s*([0-9]{10,20})",
+                r"id:\s*([0-9]{10,20})"
+            ]
+            
+            # Check for execution confirmation
             execution_confirmed = any(confirmation in response_lower for confirmation in execution_confirmations)
             
-            if execution_confirmed:
-                logger.info("🏁 Trade completion confirmed with execution", decision=decision, execution_confirmed=True)
+            # Check for VALID order ID (must be realistic)
+            order_id_found = False
+            extracted_order_id = None
+            for pattern in order_id_patterns:
+                matches = re.findall(pattern, response_lower)
+                if matches:
+                    # Validate order ID is realistic (10+ digits, not "0" or invalid values)
+                    potential_id = matches[0]
+                    if len(potential_id) >= 10 and potential_id != "0" and not potential_id.startswith("0000"):
+                        order_id_found = True
+                        extracted_order_id = potential_id
+                        break
+            
+            # Additional validation: check for suspicious patterns
+            suspicious_patterns = [
+                "stop-loss adjusted to 0",
+                "order executed: 0",
+                "order executed: stop-loss",
+                "order executed: adjusted",
+                "order executed: sl"
+            ]
+            
+            is_suspicious = any(pattern in response_lower for pattern in suspicious_patterns)
+            
+            if execution_confirmed and order_id_found and not is_suspicious:
+                logger.info("🏁 Trade completion confirmed with VALID execution and order ID", 
+                          decision=decision, 
+                          execution_confirmed=True,
+                          order_id=extracted_order_id)
                 return True
+            elif execution_confirmed and (not order_id_found or is_suspicious):
+                logger.warning("⚠️ SUSPICIOUS execution detected - likely fake order - continuing to monitor", 
+                             decision=decision, 
+                             execution_confirmed=True,
+                             order_id_found=order_id_found,
+                             extracted_order_id=extracted_order_id,
+                             is_suspicious=is_suspicious)
+                return False
             else:
                 # Claude said close but no execution confirmation - continue monitoring
                 logger.warning("⚠️ Close decision detected but no execution confirmation - continuing to monitor", 
-                             decision=decision, execution_confirmed=False)
+                             decision=decision, 
+                             execution_confirmed=False,
+                             order_id_found=order_id_found)
                 return False
         
         return False
@@ -841,33 +899,98 @@ class ClaudeOrchestrator:
         
         response_lower = response.lower()
         
-        # Extract coin/symbol
+        # Extract coin/symbol with enhanced detection
         coin = "Unknown"
-        coins = ["btc", "bitcoin", "eth", "ethereum", "sol", "solana", "xrp", "ripple", "doge", "dogecoin", "pepe", "link", "chainlink"]
-        for c in coins:
-            if c in response_lower:
-                if c in ["btc", "bitcoin"]:
-                    coin = "BTC"
-                elif c in ["eth", "ethereum"]:
-                    coin = "ETH"
-                elif c in ["sol", "solana"]:
-                    coin = "SOL"
-                elif c in ["xrp", "ripple"]:
-                    coin = "XRP"
-                elif c in ["doge", "dogecoin"]:
-                    coin = "DOGE"
-                elif c == "pepe":
-                    coin = "PEPE"
-                elif c in ["link", "chainlink"]:
-                    coin = "LINK"
+        
+        # Look for trading pair patterns first (e.g., ZORAUSDT, BTCUSDT)
+        pair_patterns = [
+            r'([A-Z]{3,10})USDT',  # ZORAUSDT, BTCUSDT, etc.
+            r'([A-Z]{3,10})USD',   # ZORUSD, BTCUSD, etc.
+            r'([A-Z]{3,10})/USDT', # ZORA/USDT format
+            r'([A-Z]{3,10})/USD'   # ZORA/USD format
+        ]
+        
+        for pattern in pair_patterns:
+            matches = re.findall(pattern, response.upper())
+            if matches:
+                coin = matches[0]
                 break
         
-        # Extract side (buy/sell, long/short)
+        # If no pair found, look for individual coin mentions
+        if coin == "Unknown":
+            coins = ["btc", "bitcoin", "eth", "ethereum", "sol", "solana", "xrp", "ripple", 
+                    "doge", "dogecoin", "pepe", "link", "chainlink", "zora", "avax", "avalanche",
+                    "matic", "polygon", "ada", "cardano", "dot", "polkadot", "uni", "uniswap",
+                    "aave", "comp", "compound", "mkr", "maker", "snx", "synthetix"]
+            
+            for c in coins:
+                if c in response_lower:
+                    if c in ["btc", "bitcoin"]:
+                        coin = "BTC"
+                    elif c in ["eth", "ethereum"]:
+                        coin = "ETH"
+                    elif c in ["sol", "solana"]:
+                        coin = "SOL"
+                    elif c in ["xrp", "ripple"]:
+                        coin = "XRP"
+                    elif c in ["doge", "dogecoin"]:
+                        coin = "DOGE"
+                    elif c == "pepe":
+                        coin = "PEPE"
+                    elif c in ["link", "chainlink"]:
+                        coin = "LINK"
+                    elif c == "zora":
+                        coin = "ZORA"
+                    elif c in ["avax", "avalanche"]:
+                        coin = "AVAX"
+                    elif c in ["matic", "polygon"]:
+                        coin = "MATIC"
+                    elif c in ["ada", "cardano"]:
+                        coin = "ADA"
+                    elif c in ["dot", "polkadot"]:
+                        coin = "DOT"
+                    elif c in ["uni", "uniswap"]:
+                        coin = "UNI"
+                    elif c == "aave":
+                        coin = "AAVE"
+                    elif c in ["comp", "compound"]:
+                        coin = "COMP"
+                    elif c in ["mkr", "maker"]:
+                        coin = "MKR"
+                    elif c in ["snx", "synthetix"]:
+                        coin = "SNX"
+                    break
+        
+        # Extract side (buy/sell, long/short) with enhanced short detection
         side = "Unknown"
-        if "buy" in response_lower or "long" in response_lower:
-            side = "Long"
-        elif "sell" in response_lower or "short" in response_lower:
+        
+        # Enhanced short position indicators
+        short_indicators = [
+            "short", "sell", "bearish", "downward", "decline", "drop", 
+            "falling", "bear", "negative", "downtrend", "shorting",
+            "sell order", "short position", "bear market", "downside"
+        ]
+        
+        # Enhanced long position indicators  
+        long_indicators = [
+            "long", "buy", "bullish", "upward", "rise", "pump",
+            "rising", "bull", "positive", "uptrend", "buying",
+            "buy order", "long position", "bull market", "upside"
+        ]
+        
+        # Count indicators for each direction
+        short_count = sum(1 for indicator in short_indicators if indicator in response_lower)
+        long_count = sum(1 for indicator in long_indicators if indicator in response_lower)
+        
+        # Determine side based on indicator count
+        if short_count > long_count:
             side = "Short"
+        elif long_count > short_count:
+            side = "Long"
+        elif "short" in response_lower or "sell" in response_lower:
+            side = "Short"
+        elif "long" in response_lower or "buy" in response_lower:
+            side = "Long"
         
         # Extract entry price using regex
         entry_price = "Unknown"
