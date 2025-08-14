@@ -1,0 +1,72 @@
+{
+  "trading": {
+    "coins": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "ADAUSDT",
+      "DOTUSDT",
+      "LINKUSDT",
+      "AVAXUSDT",
+      "MATICUSDT"
+    ],
+    "paper_trading": true,
+    "risk_per_trade": 0.01,
+    "max_concurrent_positions": 1,
+    "risk_reward_ratio": 2.0,
+    "stop_loss_atr_multiplier": 2.0,
+    "position_size_percentage": 0.05,
+    "max_position_value_usd": 100,
+    "min_confidence_threshold": 0.6,
+    "trading_hours": {
+      "enabled": true,
+      "start_hour": 9,
+      "end_hour": 17,
+      "timezone": "UTC"
+    }
+  },
+  "technical_analysis": {
+    "rsi_period": 14,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "volume_threshold": 1.5,
+    "momentum_period": 20,
+    "min_signals_required": 3
+  },
+  "bybit": {
+    "category": "spot",
+    "account_type": "UNIFIED",
+    "testnet": true,
+    "api_credentials": {
+      "use_environment_variables": true,
+      "api_key_env": "BYBIT_API_KEY",
+      "secret_key_env": "BYBIT_SECRET_KEY"
+    }
+  },
+  "claude_code": {
+    "max_retries": 3,
+    "timeout": 300,
+    "session_timeout": 1800
+  },
+  "monitoring": {
+    "log_level": "INFO",
+    "enable_notifications": true,
+    "performance_tracking": true,
+    "max_daily_trades": 10,
+    "max_daily_loss_usd": 50
+  },
+  "safety": {
+    "emergency_stop": false,
+    "max_drawdown_percent": 10,
+    "cooldown_after_loss_minutes": 60,
+    "require_manual_approval_for_trades": false,
+    "position_size_limits": {
+      "min_usd": 10,
+      "max_usd": 100,
+      "max_percentage_of_balance": 5
+    }
+  }
+}
